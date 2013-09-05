@@ -45,7 +45,7 @@ typedef struct {
     int len;
 } cmd_conf_t;
 
-typedef int (*event_handler_t)(cmd_e cmd, char *p_arg);
+typedef int (*event_handler_t)(cmd_e cmd_req, void *p_arg_req, cmd_e *p_cmd_ack, void **pp_arg_ack);
 
 event_handler_t event_handler;
 
@@ -118,7 +118,7 @@ int get_len(cmd_e cmd)
     return 0;
 }
 
-int send_cmd(cmd_e cmd, char* p_arg)
+int send_cmd(cmd_e cmd, void* p_arg)
 {
     int ret;
 
@@ -148,17 +148,18 @@ int send_cmd(cmd_e cmd, char* p_arg)
     return 0;
 }
 
-int recv_cmd(cmd_e cmd, char* p_arg)
+int recv_cmd(cmd_e cmd, void* p_arg)
 {
+    char *p_buf = (char*)p_arg;
     int remain = get_len(cmd);
 
     while(1){
         int ret;
         
-        ret = read( get_fdr(cmd),  p_arg, remain );
+        ret = read( get_fdr(cmd),  p_buf, remain );
         if( ret > 0 ){
             remain -= ret;
-            p_arg  += ret;
+            p_buf  += ret;
             if( remain == 0 ){
                 break;
             } else if( remain < 0 ){
@@ -196,7 +197,12 @@ void* recv_thread(void *p_arg)
 
         if( is_event(cmd) == 0 ){
             if( event_handler ){
-                event_handler(cmd, buff);
+                void *p_buff_ack;
+                cmd_e cmd_ack;
+                event_handler(cmd, (void*)buff, &cmd_ack,  &p_buff_ack);
+                if( cmd_ack != 0 ){
+                    // send_cmd(cmd_ack, p_buff_ack);
+                }
             }
         } else {
             ret = write( get_fdw(cmd),  buff, get_len(cmd) );
@@ -217,13 +223,13 @@ int api_no1(const char *p_in, char *p_out)
     cmd_no1_ack_t ack;
 
     strncpy(req.x, p_in, 10);
-    ret =  send_cmd(cmd_no1_req, (char*)&req);
+    ret =  send_cmd(cmd_no1_req, (void*)&req);
     if( ret != 0 ){
         printf("ERR %d\n", __LINE__);
         return -1;
     }
 
-    ret = recv_cmd(cmd_no1_ack, (char*)&ack);
+    ret = recv_cmd(cmd_no1_ack, (void*)&ack);
     if( ret != 0 ){
         printf("ERR %d\n", __LINE__);
         return -1;
@@ -233,8 +239,21 @@ int api_no1(const char *p_in, char *p_out)
     return 0;
 }
 
-event_handler_t event_handler_impl(cmd_e cmd, char *p_arg)
+event_handler_t event_handler_impl(cmd_e cmd_req, void *p_arg_req, cmd_e *p_cmd_ack, void **pp_arg_ack)
 {
+    switch(cmd_req){
+      case cmd_no6_req:
+        {
+            cmd_no6_req_t *p_req = (cmd_no6_req_t *)p_arg_req;
+            cmd_no6_ack_t ack;
+            strcpy(ack.x, "test");
+            *p_cmd_ack  = cmd_no6_ack;
+            *pp_arg_ack = (void*)&ack;
+        }
+        break;
+      default:
+        break;
+    }
     return NULL;
 }
 
